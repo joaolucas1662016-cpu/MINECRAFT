@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⛏️ Minecraft Toolkit</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body class="light-mode">
+
+  <!-- Modal para configurar API -->
+  <div id="apiKeyModal" class="modal">
+    <div class="modal-content pixel-border">
+      <h2>⚙️ Configurar IA</h2>
+      <p style="font-size:0.7rem; margin:15px 0;">Escolha o provedor e insira sua chave de API.</p>
+      
+      <label style="font-size:0.7rem;">Provedor:</label>
+      <select id="providerSelect" style="width:100%; padding:10px; margin-bottom:10px;">
+        <option value="deepseek">DeepSeek (recomendado)</option>
+        <option value="openai">OpenAI (GPT-4)</option>
+        <option value="groq">Groq (Llama 3)</option>
+        <option value="custom">Personalizado</option>
+      </select>
+      
+      <div id="customUrlDiv" style="display:none;">
+        <label style="font-size:0.7rem;">URL da API:</label>
+        <input type="text" id="apiUrlInput" placeholder="https://api.exemplo.com/v1/chat/completions" style="width:100%; padding:8px; margin-bottom:10px;">
+      </div>
+      
+      <label style="font-size:0.7rem;">Chave da API:</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-..." style="width:100%; padding:12px; font-family:monospace; margin-bottom:15px;">
+      
+      <p style="font-size:0.6rem;">
+        <a href="https://platform.deepseek.com/api_keys" target="_blank">DeepSeek</a> | 
+        <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a> | 
+        <a href="https://console.groq.com/keys" target="_blank">Groq</a>
+      </p>
+      
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button id="saveApiKeyBtn" class="pixel-btn" style="flex:1;">Salvar</button>
+        <button id="cancelApiKeyBtn" class="pixel-btn" style="flex:1;">Cancelar</button>
+      </div>
+      <p id="apiKeyStatus" style="margin-top:15px; font-size:0.7rem;"></p>
+    </div>
+  </div>
+
+  <header>
+    <div class="logo">
+      <span class="pixel-icon">⛏️</span>
+      <h1>Minecraft Toolkit</h1>
+    </div>
+    <div>
+      <button id="darkModeToggle" class="pixel-btn" title="Modo escuro">🌙</button>
+      <button id="soundToggle" class="pixel-btn" title="Sons">🔊</button>
+      <button id="configApiBtn" class="pixel-btn" title="Configurar IA">🔑</button>
+    </div>
+  </header>
+
+  <nav class="tab-menu">
+    <button class="tab-btn active" data-tab="pixelart">🎨 Pixel Art</button>
+    <button class="tab-btn" data-tab="chat">🤖 Assistente IA</button>
+    <button class="tab-btn" data-tab="inventory">📦 Otimizador</button>
+    <button class="tab-btn" data-tab="build">🏗️ Gerador Builds</button>
+    <button class="tab-btn" data-tab="farm">🌾 Planejador Farm</button>
+    <button class="tab-btn" data-tab="enchant">✨ Encantamentos</button>
+    <button class="tab-btn" data-tab="crafting">🔨 Calculadora</button>
+    <button class="tab-btn" data-tab="screenshot">📸 Scanner</button>
+  </nav>
+
+  <main id="app">
+    <div class="loader">Carregando...</div>
+  </main>
+
+  <footer>
+    <p>⚡ Ferramentas para mestres construtores ⚡</p>
+  </footer>
+
+  <audio id="clickSound" src="assets/sounds/click.mp3" preload="auto"></audio>
+  <audio id="hoverSound" src="assets/sounds/hover.mp3" preload="auto"></audio>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

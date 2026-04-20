@@ -1,0 +1,485 @@
+// ========== CONFIGURAÇÃO GLOBAL ==========
+let API_CONFIG = {
+  provider: localStorage.getItem('ai_provider') || 'deepseek',
+  apiKey: localStorage.getItem('ai_api_key') || '',
+  apiUrl: localStorage.getItem('ai_api_url') || ''
+};
+let pendingTab = null;
+
+// Mapeamento de provedores para URLs padrão
+const PROVIDER_URLS = {
+  deepseek: 'https://api.deepseek.com/v1/chat/completions',
+  openai: 'https://api.openai.com/v1/chat/completions',
+  groq: 'https://api.groq.com/openai/v1/chat/completions'
+};
+
+// ========== INICIALIZAÇÃO ==========
+document.addEventListener('DOMContentLoaded', () => {
+  setupModals();
+  setupTabs();
+  setupDarkMode();
+  renderTab('pixelart');
+});
+
+// ========== MODAL DA API ==========
+function setupModals() {
+  const modal = document.getElementById('apiKeyModal');
+  const configBtn = document.getElementById('configApiBtn');
+  const saveBtn = document.getElementById('saveApiKeyBtn');
+  const cancelBtn = document.getElementById('cancelApiKeyBtn');
+  const providerSelect = document.getElementById('providerSelect');
+  const customUrlDiv = document.getElementById('customUrlDiv');
+  const apiUrlInput = document.getElementById('apiUrlInput');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const status = document.getElementById('apiKeyStatus');
+
+  if (API_CONFIG.provider) {
+    providerSelect.value = API_CONFIG.provider;
+    if (API_CONFIG.provider === 'custom') {
+      customUrlDiv.style.display = 'block';
+      apiUrlInput.value = API_CONFIG.apiUrl || '';
+    }
+  }
+  if (API_CONFIG.apiKey) {
+    apiKeyInput.value = API_CONFIG.apiKey;
+  }
+
+  providerSelect.addEventListener('change', () => {
+    customUrlDiv.style.display = providerSelect.value === 'custom' ? 'block' : 'none';
+  });
+
+  configBtn.addEventListener('click', () => {
+    modal.style.display = 'flex';
+    pendingTab = null;
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    modal.style.display = 'none';
+    pendingTab = null;
+    status.textContent = '';
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const provider = providerSelect.value;
+    const apiKey = apiKeyInput.value.trim();
+    let apiUrl = provider === 'custom' ? apiUrlInput.value.trim() : PROVIDER_URLS[provider];
+
+    if (!apiKey) {
+      status.textContent = 'Chave da API é obrigatória.';
+      return;
+    }
+    if (provider === 'custom' && !apiUrl) {
+      status.textContent = 'URL da API é obrigatória para provedor personalizado.';
+      return;
+    }
+
+    status.textContent = 'Verificando...';
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: provider === 'deepseek' ? 'deepseek-chat' : (provider === 'groq' ? 'llama3-8b-8192' : 'gpt-3.5-turbo'),
+          messages: [{ role: 'user', content: 'test' }],
+          max_tokens: 5
+        })
+      });
+      if (!response.ok) throw new Error('Chave inválida ou erro na API');
+
+      API_CONFIG = { provider, apiKey, apiUrl };
+      localStorage.setItem('ai_provider', provider);
+      localStorage.setItem('ai_api_key', apiKey);
+      if (provider === 'custom') localStorage.setItem('ai_api_url', apiUrl);
+      else localStorage.removeItem('ai_api_url');
+
+      modal.style.display = 'none';
+      status.textContent = '';
+      apiKeyInput.value = '';
+      if (pendingTab) {
+        renderTab(pendingTab);
+        pendingTab = null;
+      }
+    } catch (e) {
+      status.textContent = `Erro: ${e.message}`;
+    }
+  });
+}
+
+function requireApiKey(tabId) {
+  if (!API_CONFIG.apiKey) {
+    pendingTab = tabId;
+    document.getElementById('apiKeyModal').style.display = 'flex';
+    return false;
+  }
+  return true;
+}
+
+// ========== SISTEMA DE ABAS ==========
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tabId = btn.dataset.tab;
+      const aiTabs = ['chat', 'inventory', 'build', 'farm', 'screenshot'];
+      if (aiTabs.includes(tabId)) {
+        if (!requireApiKey(tabId)) return;
+      }
+      renderTab(tabId);
+    });
+  });
+}
+
+function renderTab(tabId) {
+  const main = document.getElementById('app');
+  main.innerHTML = '<div class="loader">⛏️ Carregando...</div>';
+  const renderers = {
+    pixelart: renderPixelArt,
+    chat: renderChat,
+    inventory: renderInventory,
+    build: renderBuild,
+    farm: renderFarm,
+    enchant: renderEnchant,
+    crafting: renderCrafting,
+    screenshot: renderScreenshot
+  };
+  if (renderers[tabId]) {
+    renderers[tabId](main);
+  } else {
+    main.innerHTML = '<p>Ferramenta em desenvolvimento...</p>';
+  }
+}
+
+// ========== FUNÇÃO AUXILIAR PARA IA ==========
+async function callAI(messages, systemPrompt = "Você é um especialista em Minecraft.") {
+  if (!API_CONFIG.apiKey) {
+    alert('Configure a API primeiro!');
+    return null;
+  }
+
+  const url = API_CONFIG.apiUrl || PROVIDER_URLS[API_CONFIG.provider];
+  let model = 'deepseek-chat';
+  if (API_CONFIG.provider === 'openai') model = 'gpt-3.5-turbo';
+  else if (API_CONFIG.provider === 'groq') model = 'llama3-8b-8192';
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_CONFIG.apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        temperature: 0.7
+      })
+    });
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Erro na IA:', error);
+    return 'Erro ao conectar com a IA.';
+  }
+}
+
+// ========== 1. PIXEL ART CONVERTER ==========
+function renderPixelArt(container) {
+  container.innerHTML = `
+    <h2>🎨 Pixel Art Converter</h2>
+    <p>Converta imagens para pixel art estilo Minecraft.</p>
+    <input type="file" id="imageUpload" accept="image/*">
+    <div style="margin:15px 0;">
+      <label>Resolução: 
+        <select id="pixelResolution">
+          <option value="16">16x16</option>
+          <option value="32">32x32</option>
+          <option value="64" selected>64x64</option>
+          <option value="128">128x128</option>
+          <option value="256">256x256</option>
+          <option value="512">512x512</option>
+          <option value="1024">1024x1024</option>
+          <option value="2048">2048x2048</option>
+        </select>
+      </label>
+      <button id="convertBtn" class="pixel-btn">Converter</button>
+    </div>
+    <canvas id="pixelCanvas" class="preview-canvas"></canvas>
+    <div id="materialList" class="material-list"></div>
+    <button id="downloadBlueprint" class="pixel-btn">📥 Baixar Blueprint</button>
+  `;
+  document.getElementById('convertBtn').addEventListener('click', convertToPixelArt);
+  document.getElementById('downloadBlueprint').addEventListener('click', downloadBlueprint);
+}
+
+let currentBlueprint = null;
+
+function convertToPixelArt() {
+  const fileInput = document.getElementById('imageUpload');
+  const resolution = parseInt(document.getElementById('pixelResolution').value);
+  const canvas = document.getElementById('pixelCanvas');
+  const ctx = canvas.getContext('2d');
+  if (!fileInput.files[0]) {
+    alert('Selecione uma imagem.');
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    canvas.width = resolution;
+    canvas.height = resolution;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, resolution, resolution);
+    const imageData = ctx.getImageData(0, 0, resolution, resolution);
+    const materials = {};
+    const blockMap = {
+      '255,255,255': 'Lã Branca',
+      '0,0,0': 'Lã Preta',
+      '139,69,19': 'Madeira',
+      '128,128,128': 'Pedra',
+      '34,139,34': 'Folha',
+      '255,0,0': 'Lã Vermelha',
+      '0,255,0': 'Lã Verde',
+      '0,0,255': 'Lã Azul'
+    };
+    const grid = [];
+    for (let y = 0; y < resolution; y++) {
+      const row = [];
+      for (let x = 0; x < resolution; x++) {
+        const idx = (y * resolution + x) * 4;
+        const r = imageData.data[idx];
+        const g = imageData.data[idx + 1];
+        const b = imageData.data[idx + 2];
+        const key = `${r},${g},${b}`;
+        const block = blockMap[key] || 'Bloco Desconhecido';
+        row.push(block);
+        materials[block] = (materials[block] || 0) + 1;
+      }
+      grid.push(row);
+    }
+    currentBlueprint = { resolution, grid, materials };
+
+    const listDiv = document.getElementById('materialList');
+    listDiv.innerHTML = '<h3>Materiais necessários:</h3>';
+    for (let [block, count] of Object.entries(materials)) {
+      listDiv.innerHTML += `<div class="pixel-border" style="padding:5px;margin:5px;">${block}: ${count}</div>`;
+    }
+    listDiv.innerHTML += `<p>Dimensões: ${resolution}x${resolution} blocos</p>`;
+  };
+  img.src = URL.createObjectURL(fileInput.files[0]);
+}
+
+function downloadBlueprint() {
+  if (!currentBlueprint) {
+    alert('Converta uma imagem primeiro!');
+    return;
+  }
+  const { resolution, grid, materials } = currentBlueprint;
+  let content = `Minecraft Pixel Art Blueprint\n`;
+  content += `Dimensões: ${resolution}x${resolution} blocos\n\n`;
+  content += `Materiais necessários:\n`;
+  for (let [block, count] of Object.entries(materials)) {
+    content += `- ${block}: ${count}\n`;
+  }
+  content += `\nGrade (linha por linha):\n`;
+  for (let y = 0; y < resolution; y++) {
+    content += grid[y].join(' | ') + '\n';
+  }
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `blueprint_${resolution}x${resolution}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ========== 2. ASSISTENTE IA ==========
+function renderChat(container) {
+  container.innerHTML = `
+    <h2>🤖 Assistente IA Minecraft</h2>
+    <div id="chatContainer" class="chat-container"></div>
+    <div style="display:flex; margin-top:10px;">
+      <input type="text" id="chatInput" placeholder="Pergunte sobre Minecraft..." style="flex:1; padding:10px; font-family:inherit;">
+      <button id="sendChatBtn" class="pixel-btn">Enviar</button>
+    </div>
+  `;
+  const chatDiv = document.getElementById('chatContainer');
+  chatDiv.innerHTML = '<div class="chat-message assistant">Olá! Sou seu assistente especialista em Minecraft. Como posso ajudar?</div>';
+  document.getElementById('sendChatBtn').addEventListener('click', async () => {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    chatDiv.innerHTML += `<div class="chat-message user">${msg}</div>`;
+    input.value = '';
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+    const reply = await callAI([{ role: 'user', content: msg }]);
+    chatDiv.innerHTML += `<div class="chat-message assistant">${reply}</div>`;
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+  });
+}
+
+// ========== 3. OTIMIZADOR DE INVENTÁRIO ==========
+function renderInventory(container) {
+  container.innerHTML = `
+    <h2>📦 Otimizador de Inventário</h2>
+    <p>Itens (separados por vírgula):</p>
+    <textarea id="inventoryInput" rows="3" style="width:100%; padding:10px; font-family:monospace;" placeholder="Ex: espada de diamante, 64 terra..."></textarea>
+    <label>Perfil: 
+      <select id="profileSelect">
+        <option value="pvp">PvP</option>
+        <option value="build">Construção</option>
+        <option value="explore">Exploração</option>
+        <option value="speedrun">Speedrun</option>
+      </select>
+    </label>
+    <button id="optimizeBtn" class="pixel-btn">Otimizar</button>
+    <div id="optimizeResult" style="margin-top:20px;"></div>
+  `;
+  document.getElementById('optimizeBtn').addEventListener('click', async () => {
+    const items = document.getElementById('inventoryInput').value;
+    const profile = document.getElementById('profileSelect').value;
+    const resultDiv = document.getElementById('optimizeResult');
+    resultDiv.innerHTML = 'Analisando...';
+    const prompt = `Analise este inventário de Minecraft: "${items}". Perfil: ${profile}. Sugira o que manter, descartar e melhorias.`;
+    const reply = await callAI([{ role: 'user', content: prompt }]);
+    resultDiv.innerHTML = `<div class="pixel-border" style="padding:15px;">${reply}</div>`;
+  });
+}
+
+// ========== 4. GERADOR DE BUILDS ==========
+function renderBuild(container) {
+  container.innerHTML = `
+    <h2>🏗️ Gerador de Builds</h2>
+    <select id="buildType" class="pixel-btn">
+      <option value="casa medieval">Casa Medieval</option>
+      <option value="base moderna">Base Moderna</option>
+      <option value="castelo">Castelo</option>
+      <option value="farm">Farm</option>
+    </select>
+    <button id="generateBuildBtn" class="pixel-btn">Gerar Blueprint</button>
+    <div id="buildResult" style="margin-top:20px;"></div>
+  `;
+  document.getElementById('generateBuildBtn').addEventListener('click', async () => {
+    const type = document.getElementById('buildType').value;
+    const resultDiv = document.getElementById('buildResult');
+    resultDiv.innerHTML = 'Gerando...';
+    const reply = await callAI([{ role: 'user', content: `Gere um blueprint passo a passo para construir: ${type}. Inclua lista de materiais, dificuldade e tempo estimado.` }]);
+    resultDiv.innerHTML = `<div class="pixel-border" style="padding:15px;">${reply}</div>`;
+  });
+}
+
+// ========== 5. PLANEJADOR DE FARMS ==========
+function renderFarm(container) {
+  container.innerHTML = `
+    <h2>🌾 Planejador de Farms</h2>
+    <select id="farmType" class="pixel-btn">
+      <option value="XP">XP</option>
+      <option value="ferro">Ferro</option>
+      <option value="ouro">Ouro</option>
+      <option value="comida">Comida</option>
+    </select>
+    <button id="generateFarmBtn" class="pixel-btn">Planejar Farm</button>
+    <div id="farmResult" style="margin-top:20px;"></div>
+  `;
+  document.getElementById('generateFarmBtn').addEventListener('click', async () => {
+    const type = document.getElementById('farmType').value;
+    const resultDiv = document.getElementById('farmResult');
+    resultDiv.innerHTML = 'Planejando...';
+    const reply = await callAI([{ role: 'user', content: `Descreva o layout, eficiência, materiais e tutorial para uma farm de ${type} no Minecraft.` }]);
+    resultDiv.innerHTML = `<div class="pixel-border" style="padding:15px;">${reply}</div>`;
+  });
+}
+
+// ========== 6. ENCANTAMENTOS ==========
+function renderEnchant(container) {
+  const enchants = {
+    'Espada': ['Afiação', 'Golpear', 'Aspecto de Fogo', 'Saque', 'Inquebrável', 'Remendo'],
+    'Picareta': ['Eficiência', 'Fortuna', 'Toque Suave', 'Inquebrável', 'Remendo'],
+    'Armadura': ['Proteção', 'Proteção contra Fogo', 'Proteção contra Projéteis', 'Proteção contra Explosões', 'Inquebrável', 'Remendo']
+  };
+  let html = `<h2>✨ Simulador de Encantamentos</h2>`;
+  html += `<select id="itemSelect"><option>Espada</option><option>Picareta</option><option>Armadura</option></select>`;
+  html += `<label> Nível: <input id="levelInput" type="number" min="1" max="30" value="30"></label>`;
+  html += `<button id="simulateBtn" class="pixel-btn">Simular</button>`;
+  html += `<div id="enchantResult" style="margin-top:20px;"></div>`;
+  container.innerHTML = html;
+  document.getElementById('simulateBtn').addEventListener('click', () => {
+    const item = document.getElementById('itemSelect').value;
+    const level = parseInt(document.getElementById('levelInput').value);
+    const possible = enchants[item];
+    const selected = [];
+    for (let e of possible) if (Math.random() < 0.4) selected.push(e);
+    const cost = level * 3;
+    document.getElementById('enchantResult').innerHTML = `
+      <div class="pixel-border" style="padding:15px;">
+        <p><strong>Item:</strong> ${item}</p>
+        <p><strong>Nível:</strong> ${level}</p>
+        <p><strong>Encantamentos possíveis:</strong> ${selected.join(', ') || 'Nenhum'}</p>
+        <p><strong>Custo em XP:</strong> ${cost}</p>
+      </div>
+    `;
+  });
+}
+
+// ========== 7. CALCULADORA DE CRAFTING ==========
+function renderCrafting(container) {
+  const recipes = {
+    'Espada de Madeira': '2 Graveto, 2 Tábuas',
+    'Picareta de Pedra': '2 Graveto, 3 Pedra',
+    'Machado de Ferro': '2 Graveto, 3 Ferro',
+    'Arco': '3 Graveto, 3 Linha',
+    'Forno': '8 Pedra',
+    'Baú': '8 Tábuas',
+    'Mesa de Encantamento': '4 Obsidiana, 2 Diamante, 1 Livro'
+  };
+  let opts = '';
+  for (let r in recipes) opts += `<option>${r}</option>`;
+  container.innerHTML = `
+    <h2>🔨 Calculadora de Crafting</h2>
+    <select id="recipeSelect">${opts}</select>
+    <button id="calcBtn" class="pixel-btn">Calcular</button>
+    <div id="craftResult" style="margin-top:20px;"></div>
+  `;
+  document.getElementById('calcBtn').addEventListener('click', () => {
+    const sel = document.getElementById('recipeSelect').value;
+    document.getElementById('craftResult').innerHTML = `
+      <div class="pixel-border" style="padding:15px;">
+        <p><strong>${sel}</strong></p>
+        <p>Receita: ${recipes[sel]}</p>
+      </div>
+    `;
+  });
+}
+
+// ========== 8. SCANNER DE SCREENSHOT ==========
+function renderScreenshot(container) {
+  container.innerHTML = `
+    <h2>📸 Scanner de Screenshot</h2>
+    <p>Descreva o que aparece no print do seu jogo:</p>
+    <textarea id="ssDesc" rows="4" placeholder="Ex: base de pedra, baús bagunçados, parede de vidro..." style="width:100%;"></textarea>
+    <button id="analyzeSsBtn" class="pixel-btn">Analisar com IA</button>
+    <div id="ssResult" style="margin-top:20px;"></div>
+  `;
+  document.getElementById('analyzeSsBtn').addEventListener('click', async () => {
+    const desc = document.getElementById('ssDesc').value;
+    const resDiv = document.getElementById('ssResult');
+    resDiv.innerHTML = 'Analisando...';
+    const reply = await callAI([{ role: 'user', content: `Analise este print do Minecraft descrito como: "${desc}". Dê dicas de melhoria, organização, segurança e estética.` }]);
+    resDiv.innerHTML = `<div class="pixel-border" style="padding:15px;">${reply}</div>`;
+  });
+}
+
+// ========== DARK MODE ==========
+function setupDarkMode() {
+  const btn = document.getElementById('darkModeToggle');
+  btn.addEventListener('click', () => {
+    document.body.classList.toggle('dark-mode');
+    btn.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+  });
+}
